@@ -49,12 +49,16 @@ function toggle() {
 
 	.chat-window {
 		display: flex;
+		border: 1px solid var(--border);
+		border-radius: 18px;
+		backdrop-filter: saturate(120%) blur(8px);
+		-webkit-backdrop-filter: saturate(120%) blur(8px);
 		width: var(--chat--window--width);
 		height: var(--chat--window--height);
 		max-width: 100%;
 		max-height: 100%;
-		border: var(--chat--window--border, 1px solid var(--chat--color-light-shade-100));
-		border-radius: var(--chat--window--border-radius, var(--chat--border-radius));
+		border: var(--chat--window--border);
+		// border-radius: var(--chat--window--border-radius, var(--chat--border-radius));
 		margin-bottom: var(--chat--window--margin-bottom, var(--chat--spacing));
 		overflow: hidden;
 		transform-origin: bottom right;

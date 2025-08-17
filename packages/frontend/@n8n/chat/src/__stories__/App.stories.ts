@@ -56,3 +56,19 @@ export const WorkflowChat: Story = {
 		enableStreaming: false,
 	} satisfies Partial<ChatOptions>,
 };
+
+export const Custom: Story = {
+	args: {
+		webhookUrl: 'http://localhost:5678/webhook/54117de5-368d-4ca1-a851-0dce00bcd5fe/chat',
+		mode: 'window',
+		enableStreaming: false,
+	},
+};
+
+export const New: Story = {
+	args: {
+		webhookUrl: 'http://localhost:5678/webhook/54117de5-368d-4ca1-a851-0dce00bcd5fe/chat',
+		mode: 'window',
+		enableStreaming: false,
+	},
+};

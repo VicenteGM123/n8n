@@ -369,28 +369,40 @@ function adjustTextAreaHeight() {
 		box-sizing: border-box;
 	}
 }
+.composer-field {
+}
+.composer-field textarea {
+}
 .chat-inputs {
 	width: 100%;
 	display: flex;
 	justify-content: center;
-	align-items: flex-end;
+	align-items: center;
+	gap: 0.5rem;
+	background: var(--chat--body--background);
+
+	padding: 0.7rem 1rem;
 
 	textarea {
 		font-family: inherit;
+		background-color: var(--chat--input--background);
 		font-size: var(--chat--input--font-size);
 		width: 100%;
-		border: var(--chat--input--border, 0);
-		border-radius: var(--chat--input--border-radius);
-		padding: var(--chat--input--padding);
-		min-height: var(--chat--textarea--height, 2.5rem); // Set a smaller initial height
+		min-height: var(--chat--textarea--height, 3.5rem); // Set a smaller initial height
 		max-height: var(--chat--textarea--max-height);
-		height: var(--chat--textarea--height, 2.5rem); // Set initial height same as min-height
-		resize: none;
+		height: var(--chat--textarea--height, 3.5rem); // Set initial height same as min-height
 		overflow-y: auto;
-		background: var(--chat--input--background, white);
 		color: var(--chat--input--text-color, initial);
-		outline: none;
 		line-height: var(--chat--input--line-height, 1.5);
+		outline: none;
+		resize: none;
+
+		padding: 0.6rem;
+
+		border: 1px solid var(--chat--border-color);
+		border-radius: 12px;
+
+		box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.04);
 
 		&::placeholder {
 			font-size: var(--chat--input--placeholder--font-size, var(--chat--input--font-size));
@@ -403,11 +415,13 @@ function adjustTextAreaHeight() {
 }
 .chat-inputs-controls {
 	display: flex;
+	align-self: end;
+	height: 100%;
 }
 .chat-input-send-button,
 .chat-input-file-button {
-	height: var(--chat--textarea--height);
-	width: var(--chat--textarea--height);
+	height: 50px;
+	width: 50px;
 	background: var(--chat--input--send--button--background, white);
 	cursor: pointer;
 	color: var(--chat--input--send--button--color, var(--chat--color-secondary));
@@ -417,6 +431,7 @@ function adjustTextAreaHeight() {
 	align-items: center;
 	justify-content: center;
 	transition: color var(--chat--transition-duration) ease;
+	border-radius: 12px;
 
 	svg {
 		min-width: fit-content;
@@ -424,7 +439,7 @@ function adjustTextAreaHeight() {
 
 	&[disabled] {
 		cursor: no-drop;
-		color: var(--chat--color-disabled);
+		opacity: 0.5;
 	}
 
 	.chat-input-send-button {

@@ -6,6 +6,11 @@ export interface ChatOptions {
 		method?: 'GET' | 'POST';
 		headers?: Record<string, string>;
 	};
+	// Opcional: endpoint para modo llamada/voz
+	voiceWebhookUrl?: string;
+	voiceWebhookConfig?: {
+		headers?: Record<string, string>;
+	};
 	target?: string | Element;
 	mode?: 'window' | 'fullscreen';
 	showWindowCloseButton?: boolean;
