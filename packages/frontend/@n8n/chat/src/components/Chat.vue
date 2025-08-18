@@ -46,9 +46,7 @@ const onUserTypingStop = () => {
 	userTyping.value = false;
 };
 
-// Mostrar/ocultar toggle según options.chatMode === 'toggle'
 const showToggle = computed(() => {
-	return true;
 	options.chatMode === 'toggle';
 });
 
