@@ -2,6 +2,7 @@
 import { ref, onUnmounted } from 'vue';
 import { useChat, useOptions } from '@n8n/chat/composables';
 import { chatEventBus } from '@n8n/chat/event-buses';
+import IconMic from 'virtual:icons/mdi/microphone';
 
 const chatStore = useChat();
 const { options } = useOptions();
@@ -9,16 +10,22 @@ const { options } = useOptions();
 // Estado de grabación y envío
 const isListening = ref(false);
 const isSending = ref(false);
+const isSpeaking = ref(false);
+const speakLevel = ref(0);
 const transcript = ref('');
+const userTyping = ref(false);
 let mediaRecorder: MediaRecorder | null = null;
 let audioChunks: Blob[] = [];
 let mediaStream: MediaStream | null = null;
-let usedMimeType: string | undefined;
 // Waveform
 const waveCanvas = ref<HTMLCanvasElement | null>(null);
 let audioContext: AudioContext | null = null;
 let analyser: AnalyserNode | null = null;
 let rafId: number | null = null;
+// Playback analyser for speaking animation
+let speakCtx: AudioContext | null = null;
+let speakAnalyser: AnalyserNode | null = null;
+let speakRafId: number | null = null;
 
 async function onClick() {
 	if (!isListening.value) {
@@ -33,41 +40,17 @@ async function onClick() {
 async function startRecording() {
 	transcript.value = '';
 	try {
-		mediaStream = await navigator.mediaDevices.getUserMedia({
-			audio: {
-				channelCount: 1,
-				sampleRate: 48000,
-				sampleSize: 16,
-				echoCancellation: false,
-				autoGainControl: false,
-				noiseSuppression: false,
-			},
-		});
-
-		const mimeType = pickSupportedMimeType([
-			'audio/webm;codecs=opus',
-			'audio/webm',
-			'audio/ogg;codecs=opus',
-			'audio/ogg',
-		]);
-		usedMimeType = mimeType;
-		mediaRecorder = new MediaRecorder(mediaStream, {
-			...(mimeType ? { mimeType } : {}),
-			audioBitsPerSecond: 128000,
-		});
+		mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+		mediaRecorder = new MediaRecorder(mediaStream);
 		audioChunks = [];
 		mediaRecorder.ondataavailable = (e) => {
 			if (e.data && e.data.size > 0) audioChunks.push(e.data);
 		};
 		mediaRecorder.onstop = async () => {
-			const recordedType = usedMimeType || mediaRecorder?.mimeType || 'audio/webm';
-			const rawBlob = new Blob(audioChunks, { type: recordedType });
-			// Try to transcode to 16kHz mono WAV for better STT quality
-			const wavBlob = await transcodeToWav(rawBlob, 16000).catch(() => null);
-			const audioBlob = wavBlob || rawBlob;
+			const blob = new Blob(audioChunks, { type: 'audio/ogg; codecs=opus' });
 			audioChunks = [];
 			teardownWaveform();
-			await sendAudio(audioBlob);
+			await sendAudio(blob);
 			// detener pistas
 			if (mediaStream) {
 				mediaStream.getTracks().forEach((t) => t.stop());
@@ -100,6 +83,8 @@ async function stopRecordingAndSend() {
 async function sendAudio(audioBlob: Blob) {
 	if (isSending.value) return;
 	isSending.value = true;
+	userTyping.value = true;
+	chatEventBus.emit('voice:user-typing:start');
 	try {
 		// 1) Llamada 1: enviar audio -> obtener transcripción
 		const form = new FormData();
@@ -118,10 +103,15 @@ async function sendAudio(audioBlob: Blob) {
 		const data1 = await res1.json(); // { text: transcript }
 		const userText = (data1?.text || '').toString();
 		if (userText) {
+			userTyping.value = false;
+			chatEventBus.emit('voice:user-typing:stop');
 			chatStore.messages.value.push({ id: crypto.randomUUID(), text: userText, sender: 'user' });
 			transcript.value = userText;
 			chatEventBus.emit('scrollToBottom');
 		}
+
+		// Ahora empieza el waiting para la respuesta del bot
+		chatStore.waitingForResponse.value = true;
 
 		// 2) Llamada 2: responseType=messageFromAudio -> { text, audio }
 		const res2 = await fetch(options.webhookUrl, {
@@ -133,28 +123,29 @@ async function sendAudio(audioBlob: Blob) {
 			body: JSON.stringify({
 				action: 'messageFromAudio',
 				[options.chatSessionKey as string]: chatStore.currentSessionId.value || '',
-				text: userText,
+				chatInput: userText,
 				...(options.metadata ? { metadata: options.metadata } : {}),
 			}),
 		});
 		if (!res2.ok) throw new Error(`Webhook (messageFromAudio) failed: ${res2.status}`);
-		const data2 = await res2.json(); // { text?: string, audio?: string }
-		const botText = (data2?.text || '').toString();
+		const data2 = await res2.json();
+		const botText = (data2?.output || '').toString();
 		if (botText) {
 			chatStore.messages.value.push({ id: crypto.randomUUID(), text: botText, sender: 'bot' });
 			chatEventBus.emit('scrollToBottom');
 		}
 
-		if (data2?.audio) {
-			try {
-				const audio = new Audio(data2.audio);
-				void audio.play();
-			} catch {}
-		}
+		// Intentar reproducir audio con distintas formas posibles devueltas por el webhook
+		await playAudioFromResponse(data2).catch((err) => {
+			console.warn('No se pudo reproducir el audio de la respuesta:', err);
+		});
 	} catch (e) {
 		// opcional: mostrar error
 		console.error(e);
 	} finally {
+		userTyping.value = false;
+		chatEventBus.emit('voice:user-typing:stop');
+		chatStore.waitingForResponse.value = false;
 		isSending.value = false;
 	}
 }
@@ -207,7 +198,10 @@ function drawWaveform() {
 	ctx.fillRect(0, 0, width, height);
 
 	ctx.lineWidth = 2;
-	ctx.strokeStyle = 'var(--chat--color-primary, #6366f1)';
+	// Obtener el color de la variable CSS definida en el canvas
+	const computedStyle = getComputedStyle(canvas);
+	const strokeColor = computedStyle.getPropertyValue('--waveform-stroke-color').trim() || '#6366f1';
+	ctx.strokeStyle = strokeColor;
 	ctx.beginPath();
 	const sliceWidth = width / data.length;
 	let x = 0;
@@ -238,121 +232,105 @@ function teardownWaveform() {
 	analyser = null;
 }
 
-// Pick best supported codec/container
-function pickSupportedMimeType(candidates: string[]): string | undefined {
-	if (!('MediaRecorder' in window)) return undefined;
-	for (const t of candidates) {
-		try {
-			if ((window as any).MediaRecorder.isTypeSupported?.(t)) return t;
-		} catch {}
-	}
-	return undefined;
+// ===== Audio helpers (respuesta del bot) =====
+async function playAudioFromResponse(payload: any) {
+	// Simplificado: siempre esperamos base64 en payload.audio; si es data URL, se usa tal cual
+	const audioStr: string | undefined =
+		typeof payload?.audio === 'string' ? payload.audio : undefined;
+	if (!audioStr) return Promise.reject(new Error('No audio base64 in payload.audio'));
+	const audio = new Audio(audioStr);
+	wireSpeakingLifecycle(audio);
+	return audio.play();
 }
 
-// Transcode Blob (webm/ogg/opus) to 16kHz mono WAV using WebAudio
-async function transcodeToWav(input: Blob, targetSampleRate = 16000): Promise<Blob> {
-	// Some browsers can't decode webm via decodeAudioData; try via HTMLAudioElement/MediaElementAudioSourceNode fallback if needed.
-	const arrayBuf = await input.arrayBuffer();
-	const decodeCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-	let decoded: AudioBuffer;
+function wireSpeakingLifecycle(audio: HTMLAudioElement) {
+	const onPlaying = () => startSpeaking(audio);
+	const onEnd = () => {
+		stopSpeaking();
+		audio.removeEventListener('playing', onPlaying);
+		audio.removeEventListener('ended', onEnd);
+		audio.removeEventListener('pause', onEnd);
+		audio.removeEventListener('error', onEnd);
+	};
+	audio.addEventListener('playing', onPlaying);
+	audio.addEventListener('ended', onEnd);
+	audio.addEventListener('pause', onEnd);
+	audio.addEventListener('error', onEnd);
+}
+
+function startSpeaking(audioEl: HTMLAudioElement) {
+	isSpeaking.value = true;
+	// Setup analyser to drive animation level
 	try {
-		// Modern browsers: Promise-based decode
-		decoded = await decodeCtx.decodeAudioData(arrayBuf.slice(0));
-	} catch {
-		// Fallback to callback signature
-		decoded = await new Promise<AudioBuffer>((resolve, reject) => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			(decodeCtx as any).decodeAudioData(arrayBuf, resolve, reject);
-		});
-	} finally {
-		try {
-			decodeCtx.close();
-		} catch {}
-	}
-
-	// Downmix to mono if needed
-	let monoBuffer: AudioBuffer;
-	if (decoded.numberOfChannels === 1) monoBuffer = decoded;
-	else {
-		const len = decoded.length;
-		const sampleRate = decoded.sampleRate;
-		monoBuffer = new AudioBuffer({ length: len, sampleRate, numberOfChannels: 1 });
-		const out = monoBuffer.getChannelData(0);
-		const chans = decoded.numberOfChannels;
-		const inputs = new Array(chans).fill(0).map((_, i) => decoded.getChannelData(i));
-		for (let i = 0; i < len; i++) {
+		speakCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+		const src = speakCtx.createMediaElementSource(audioEl);
+		speakAnalyser = speakCtx.createAnalyser();
+		speakAnalyser.fftSize = 256;
+		src.connect(speakAnalyser);
+		// CORREGIDO: Conectar directamente al destino para que se escuche
+		speakAnalyser.connect(speakCtx.destination);
+		const data = new Uint8Array(speakAnalyser.frequencyBinCount);
+		// notify start
+		chatEventBus.emit('speaking:start');
+		const loop = () => {
+			if (!speakAnalyser) return;
+			speakAnalyser.getByteFrequencyData(data);
+			// Average magnitude normalized 0..1
 			let sum = 0;
-			for (let c = 0; c < chans; c++) sum += inputs[c][i];
-			out[i] = sum / chans;
-		}
+			for (let i = 0; i < data.length; i++) sum += data[i];
+			const avg = sum / (data.length * 255);
+			speakLevel.value = Math.max(0.05, Math.min(1, avg * 1.5));
+			chatEventBus.emit('speaking:level', speakLevel.value);
+			speakRafId = requestAnimationFrame(loop);
+		};
+		loop();
+	} catch (e) {
+		// Fallback: simple pulsing
+		let t = 0;
+		chatEventBus.emit('speaking:start');
+		const loop = () => {
+			speakLevel.value = 0.3 + 0.2 * Math.sin(t);
+			t += 0.15;
+			chatEventBus.emit('speaking:level', speakLevel.value);
+			speakRafId = requestAnimationFrame(loop);
+		};
+		loop();
 	}
-
-	// High-quality resample using OfflineAudioContext
-	const length = Math.ceil(monoBuffer.duration * targetSampleRate);
-	const offline = new OfflineAudioContext(1, length, targetSampleRate);
-	const src = offline.createBufferSource();
-	src.buffer = monoBuffer;
-	src.connect(offline.destination);
-	src.start(0);
-	const rendered = await offline.startRendering();
-	const samples = rendered.getChannelData(0);
-	const wav = encodeWav(samples, targetSampleRate);
-	return new Blob([wav], { type: 'audio/wav' });
 }
 
-function encodeWav(samples: Float32Array, sampleRate: number): ArrayBuffer {
-	const bytesPerSample = 2; // 16-bit PCM
-	const blockAlign = 1 * bytesPerSample;
-	const buffer = new ArrayBuffer(44 + samples.length * bytesPerSample);
-	const view = new DataView(buffer);
-
-	// Write WAV header
-	writeString(view, 0, 'RIFF');
-	view.setUint32(4, 36 + samples.length * bytesPerSample, true);
-	writeString(view, 8, 'WAVE');
-	writeString(view, 12, 'fmt ');
-	view.setUint32(16, 16, true); // PCM chunk size
-	view.setUint16(20, 1, true); // PCM format
-	view.setUint16(22, 1, true); // mono
-	view.setUint32(24, sampleRate, true);
-	view.setUint32(28, sampleRate * blockAlign, true); // byte rate
-	view.setUint16(32, blockAlign, true);
-	view.setUint16(34, 8 * bytesPerSample, true); // bits per sample
-	writeString(view, 36, 'data');
-	view.setUint32(40, samples.length * bytesPerSample, true);
-
-	// PCM samples
-	floatTo16BitPCM(view, 44, samples);
-	return buffer;
-}
-
-function writeString(view: DataView, offset: number, str: string) {
-	for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-}
-
-function floatTo16BitPCM(view: DataView, offset: number, input: Float32Array) {
-	let pos = offset;
-	for (let i = 0; i < input.length; i++, pos += 2) {
-		let s = Math.max(-1, Math.min(1, input[i]));
-		view.setInt16(pos, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+function stopSpeaking() {
+	isSpeaking.value = false;
+	speakLevel.value = 0;
+	if (speakRafId) {
+		cancelAnimationFrame(speakRafId);
+		speakRafId = null;
 	}
+	if (speakCtx) {
+		try {
+			speakCtx.close();
+		} catch {}
+		speakCtx = null;
+	}
+	speakAnalyser = null;
+	chatEventBus.emit('speaking:stop');
 }
 </script>
 
 <template>
 	<div class="voice-footer">
-		<button class="mic-button" @click="onClick" :aria-pressed="isListening" :disabled="isSending">
+		<button
+			class="mic-button"
+			@click="onClick"
+			:aria-pressed="isListening"
+			:disabled="isSending"
+			:style="{ '--speak-level': speakLevel.toFixed(2) }"
+		>
 			<span class="dot" :class="{ active: isListening }" />
-			<span class="icon">🎤</span>
+			<IconMic class="icon" />
 		</button>
 
 		<div class="waveform" v-show="isListening">
-			<canvas ref="waveCanvas"></canvas>
-		</div>
-
-		<div class="transcript" v-if="transcript">
-			<span class="label">Dijiste:</span>
-			<span class="text">{{ transcript }}</span>
+			<canvas ref="waveCanvas" class="waveform-canvas"></canvas>
 		</div>
 	</div>
 </template>
@@ -363,6 +341,7 @@ function floatTo16BitPCM(view: DataView, offset: number, input: Float32Array) {
 	align-items: center;
 	gap: 0.75rem;
 	padding: 0.5rem 0.75rem;
+	position: relative; /* para referencia de medición */
 }
 .waveform {
 	flex: 1;
@@ -375,10 +354,13 @@ function floatTo16BitPCM(view: DataView, offset: number, input: Float32Array) {
 	display: block;
 	border-radius: 8px;
 }
+.waveform-canvas {
+	--waveform-stroke-color: var(--chat--color-primary, #6366f1);
+}
 .mic-button {
 	position: relative;
-	width: 44px;
-	height: 44px;
+	width: 58px;
+	height: 58px;
 	border-radius: 999px;
 	border: 1px solid var(--chat--border-color);
 	background: var(--chat--input--background, #fff);
@@ -387,11 +369,16 @@ function floatTo16BitPCM(view: DataView, offset: number, input: Float32Array) {
 	align-items: center;
 	justify-content: center;
 	outline: none;
+	transition:
+		transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+		box-shadow 220ms ease;
 }
 .icon {
 	position: relative;
 	z-index: 2;
-	font-size: 18px;
+	width: 24px;
+	height: 24px;
+	transition: transform 80ms linear;
 }
 .dot {
 	position: absolute;
@@ -414,5 +401,24 @@ function floatTo16BitPCM(view: DataView, offset: number, input: Float32Array) {
 }
 .transcript .text {
 	font-weight: 500;
+}
+
+/* Dark mode overrides: mantener los estilos light como predeterminados */
+@media (prefers-color-scheme: dark) {
+	.mic-button {
+		background: var(--chat--input--background, #0b1220);
+		border-color: rgba(255, 255, 255, 0.14);
+		color: #e5e7eb; /* icono */
+	}
+	.mic-button:hover {
+		border-color: rgba(255, 255, 255, 0.22);
+	}
+	.dot {
+		background: radial-gradient(
+			circle at 50% 50%,
+			rgba(34, 211, 238, 0.18),
+			rgba(99, 102, 241, 0.08)
+		);
+	}
 }
 </style>

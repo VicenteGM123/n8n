@@ -19,7 +19,7 @@ export async function voiceConnect(options: ChatOptions) {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			...(options.voiceWebhookConfig?.headers || {}),
+			...(options.webhookConfig?.headers || {}),
 		},
 		body: JSON.stringify({ requestType: 'newConnection' as VoiceRequestType }),
 	});
@@ -41,7 +41,7 @@ export async function voiceSendMessage(
 		form.append('audio', payload.audio, 'audio.webm');
 		const res = await fetch(options.webhookUrl, {
 			method: 'POST',
-			headers: { ...(options.voiceWebhookConfig?.headers || {}) },
+			headers: { ...(options.webhookConfig?.headers || {}) },
 			body: form,
 		});
 		if (!res.ok) throw new Error(`Voice message failed: ${res.status}`);
@@ -52,7 +52,7 @@ export async function voiceSendMessage(
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			...(options.voiceWebhookConfig?.headers || {}),
+			...(options.webhookConfig?.headers || {}),
 		},
 		body: JSON.stringify({ requestType: 'message', connectionId, text: payload.text ?? '' }),
 	});

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, computed } from 'vue';
+import { nextTick, onMounted, onUnmounted, ref, computed } from 'vue';
 
 import GetStarted from '@n8n/chat/components/GetStarted.vue';
 import GetStartedFooter from '@n8n/chat/components/GetStartedFooter.vue';
@@ -9,6 +9,8 @@ import MessagesList from '@n8n/chat/components/MessagesList.vue';
 import VoiceChat from '@n8n/chat/components/VoiceChat.vue';
 import { useI18n, useChat, useOptions } from '@n8n/chat/composables';
 import { chatEventBus } from '@n8n/chat/event-buses';
+import IconChat from 'virtual:icons/mdi/chatOutline';
+import IconMic from 'virtual:icons/mdi/microphone';
 
 const { t } = useI18n();
 const chatStore = useChat();
@@ -16,16 +18,38 @@ const chatStore = useChat();
 const { messages, currentSessionId } = chatStore;
 const { options } = useOptions();
 
-// Modo de chat: texto o voz
-const chatMode = ref<'text' | 'voice'>('text');
-function toggleChatMode() {
-	chatMode.value = chatMode.value === 'text' ? 'voice' : 'text';
-}
+// Modo de chat: texto o voz; si options.chatMode es 'text' o 'voice', arrancamos en ese modo
+const chatMode = ref<'text' | 'voice'>(options.chatMode === 'voice' ? 'voice' : 'text');
+const speaking = ref(false);
+const speakLevel = ref(0);
+const indicatorActive = ref(false);
+const indicatorLevel = ref(0);
+const userTyping = ref(false);
+const onSpeakStart = () => {
+	indicatorActive.value = true;
+	speaking.value = true;
+};
+const onSpeakStop = () => {
+	indicatorActive.value = false;
+	speaking.value = false;
+	speakLevel.value = 0;
+	indicatorLevel.value = 0;
+};
+const onSpeakLevel = (lvl: number) => {
+	speakLevel.value = lvl || 0;
+	indicatorLevel.value = lvl || 0;
+};
+const onUserTypingStart = () => {
+	userTyping.value = true;
+};
+const onUserTypingStop = () => {
+	userTyping.value = false;
+};
 
-// Mostrar/ocultar toggle según opción de i18n: t('chatMode') === false
+// Mostrar/ocultar toggle según options.chatMode === 'toggle'
 const showToggle = computed(() => {
-	const v = t('chatMode') as unknown as any;
-	return !(v === false || v === 'false' || v === '0' || v === 0 || v === 'off' || v === 'disabled');
+	return true;
+	options.chatMode === 'toggle';
 });
 
 async function getStarted() {
@@ -53,6 +77,19 @@ onMounted(async () => {
 	if (!options.showWelcomeScreen && !currentSessionId.value) {
 		await getStarted();
 	}
+	chatEventBus.on('speaking:start', onSpeakStart);
+	chatEventBus.on('speaking:stop', onSpeakStop);
+	chatEventBus.on('speaking:level', onSpeakLevel);
+	chatEventBus.on('voice:user-typing:start', onUserTypingStart);
+	chatEventBus.on('voice:user-typing:stop', onUserTypingStop);
+});
+
+onUnmounted(() => {
+	chatEventBus.off('speaking:start', onSpeakStart);
+	chatEventBus.off('speaking:stop', onSpeakStop);
+	chatEventBus.off('speaking:level', onSpeakLevel);
+	chatEventBus.off('voice:user-typing:start', onUserTypingStart);
+	chatEventBus.off('voice:user-typing:stop', onUserTypingStop);
 });
 </script>
 
@@ -68,23 +105,45 @@ onMounted(async () => {
 					<div class="status" v-if="t('subtitle')">{{ t('subtitle') }}</div>
 				</div>
 				<div class="actions">
-					<button
-						class="chat-toggle-mode-button"
-						v-if="showToggle"
-						:title="chatMode === 'text' ? 'Cambiar a chat por voz' : 'Cambiar a chat por texto'"
-						aria-label="Alternar modo de chat"
-						@click="toggleChatMode"
-					>
-						{{ chatMode === 'text' ? '🎤' : '💬' }}
-					</button>
+					<div v-if="showToggle" class="mode-toggle" role="group" aria-label="Modo de chat">
+						<button
+							class="toggle-segment"
+							:class="{ active: chatMode === 'text' }"
+							@click="chatMode = 'text'"
+							title="Chat por texto"
+							:aria-pressed="chatMode === 'text'"
+						>
+							<IconChat class="toggle-icon" />
+						</button>
+						<button
+							class="toggle-segment"
+							:class="{ active: chatMode === 'voice' }"
+							@click="chatMode = 'voice'"
+							title="Chat por voz"
+							:aria-pressed="chatMode === 'voice'"
+						>
+							<IconMic class="toggle-icon" />
+						</button>
+					</div>
 				</div>
 			</div>
 		</template>
 
 		<!-- Contenido principal: siempre mostrar mensajes o pantalla de bienvenida -->
-		<GetStarted v-if="!currentSessionId && options.showWelcomeScreen" @click:button="getStarted" />
-		<MessagesList v-else :messages="messages" />
 
+		<div
+			v-if="chatMode === 'voice'"
+			class="speaking-indicator"
+			:class="{ active: indicatorActive }"
+			:style="{ '--speak-level': indicatorActive ? indicatorLevel.toFixed(2) : '0' }"
+		>
+			<div class="ring">
+				<div class="wave"></div>
+			</div>
+		</div>
+
+		<GetStarted v-if="!currentSessionId && options.showWelcomeScreen" @click:button="getStarted" />
+		<MessagesList v-else :messages="messages" :user-typing="userTyping" />
 		<!-- Footer del layout: alterna entre Input (texto) y VoiceChat (voz) -->
 		<template #footer>
 			<template v-if="chatMode === 'text'">
@@ -145,12 +204,100 @@ onMounted(async () => {
 	gap: 0.5rem;
 }
 
-.chat-toggle-mode-button {
+/* Toggle moderno */
+.mode-toggle {
+	display: inline-flex;
+	background: #f3f4f6;
+	border: 1px solid #e5e7eb;
+	border-radius: 999px;
+	padding: 4px;
+	gap: 4px;
+}
+.toggle-segment {
 	border: none;
-	background: none;
+	background: transparent;
+	color: #6366f1;
+	width: 32px;
+	height: 32px;
+	border-radius: 999px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 1.2rem;
 	cursor: pointer;
-	font-size: 1.1rem;
-	line-height: 1;
-	padding: 0.25rem;
+	opacity: 0.6;
+	transition:
+		background 0.2s,
+		color 0.2s;
+}
+.toggle-segment.active {
+	background: #6366f1;
+	color: #fff;
+	opacity: 1;
+}
+.toggle-icon {
+	width: 18px;
+	height: 18px;
+}
+
+/* Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+	.mode-toggle {
+		background: #0b1220; /* deep background */
+		border-color: #24304a; /* subtle border */
+	}
+	.toggle-segment {
+		color: #c7d2fe; /* indigo-200 */
+	}
+	.toggle-segment:hover {
+		background: rgba(99, 102, 241, 0.12);
+	}
+	.toggle-segment.active {
+		background: #6366f1; /* indigo-500 */
+		color: #fff;
+	}
+}
+.speaking-indicator {
+	position: sticky;
+	top: 8px;
+	z-index: 2;
+	display: flex;
+	justify-content: center;
+	padding: 8px 0;
+}
+// speaking indicator base
+.speaking-indicator .ring {
+	width: 56px;
+	height: 56px;
+	border-radius: 999px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	display: grid;
+	place-items: center;
+	transition: transform 400ms cubic-bezier(0.22, 1, 0.36, 1);
+	overflow: hidden;
+}
+.speaking-indicator.active .ring {
+	/* Grow more when speaking, modulate by level */
+	transform: scale(calc(1.3 + (var(--speak-level, 0) * 0.3)));
+	transition: transform 120ms ease-out;
+}
+
+.speaking-indicator .wave {
+	width: 120%;
+	height: 120%;
+	background: conic-gradient(#60a5fa, #22d3ee, #34d399, #f59e0b, #f472b6, #a78bfa, #60a5fa);
+	opacity: 1;
+}
+.speaking-indicator.active .wave {
+	animation: swirl 3s linear infinite;
+}
+
+@keyframes swirl {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 </style>
