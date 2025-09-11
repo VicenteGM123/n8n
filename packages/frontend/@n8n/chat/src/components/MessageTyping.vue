@@ -8,22 +8,25 @@ import { Message } from './index';
 const props = withDefaults(
 	defineProps<{
 		animation?: 'bouncing' | 'scaling';
+		sender?: 'bot' | 'user';
 	}>(),
 	{
 		animation: 'bouncing',
+		sender: 'bot',
 	},
 );
 
 const message: ChatMessage = {
-	id: 'typing',
+	id: `typing-${props.sender}`,
 	text: '',
-	sender: 'bot',
+	sender: props.sender,
 };
 const messageContainer = ref<InstanceType<typeof Message>>();
 const classes = computed(() => {
 	return {
 		// eslint-disable-next-line @typescript-eslint/naming-convention
 		'chat-message-typing': true,
+		[`chat-message-typing-${props.sender}`]: true,
 		[`chat-message-typing-animation-${props.animation}`]: true,
 	};
 });
@@ -37,7 +40,7 @@ onMounted(() => {
 		ref="messageContainer"
 		:class="classes"
 		:message="message"
-		data-test-id="chat-message-typing"
+		:data-test-id="`chat-message-typing-${sender}`"
 	>
 		<div class="chat-message-typing-body">
 			<span class="chat-message-typing-circle"></span>
@@ -71,7 +74,6 @@ onMounted(() => {
 		height: 10px;
 		width: 10px;
 		border-radius: 50%;
-		background-color: var(--chat--color-typing);
 		margin: 3px;
 
 		&:nth-child(1) {
@@ -85,6 +87,16 @@ onMounted(() => {
 		&:nth-child(3) {
 			animation-delay: 666ms;
 		}
+	}
+
+	// Estilos específicos para mensajes del usuario
+	&.chat-message-typing-user .chat-message-typing-circle {
+		background-color: #f9f9f9;
+	}
+
+	// Estilos específicos para mensajes del bot (por defecto)
+	&.chat-message-typing-bot .chat-message-typing-circle {
+		background-color: var(--chat--color-typing, #9ca3af);
 	}
 }
 

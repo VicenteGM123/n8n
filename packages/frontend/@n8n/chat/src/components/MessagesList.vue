@@ -7,9 +7,10 @@ import MessageTyping from '@n8n/chat/components/MessageTyping.vue';
 import { useChat } from '@n8n/chat/composables';
 import type { ChatMessage } from '@n8n/chat/types';
 
-defineProps<{
+const props = defineProps<{
 	messages: ChatMessage[];
 	emptyText?: string;
+	userTyping?: boolean;
 }>();
 
 defineSlots<{
@@ -57,7 +58,12 @@ watch(
 				</template>
 			</Message>
 		</template>
-		<MessageTyping v-if="waitingForResponse" />
+
+		<!-- User typing indicator -->
+		<MessageTyping v-if="props.userTyping" sender="user" />
+
+		<!-- Bot typing indicator -->
+		<MessageTyping v-if="waitingForResponse" sender="bot" />
 	</div>
 </template>
 

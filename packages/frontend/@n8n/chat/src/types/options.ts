@@ -34,4 +34,11 @@ export interface ChatOptions {
 	allowFileUploads?: Ref<boolean> | boolean;
 	allowedFilesMimeTypes?: Ref<string> | string;
 	enableStreaming?: boolean;
+	/**
+	 * Control de modo de chat.
+	 * - 'text': solo texto, sin toggle
+	 * - 'voice': solo voz, sin toggle
+	 * - 'toggle': muestra un toggle moderno para alternar entre texto y voz
+	 */
+	chatMode?: 'text' | 'voice' | 'toggle';
 }
