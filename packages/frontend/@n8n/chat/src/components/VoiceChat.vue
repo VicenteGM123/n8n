@@ -3,6 +3,7 @@ import { ref, onUnmounted } from 'vue';
 import { useChat, useOptions } from '@n8n/chat/composables';
 import { chatEventBus } from '@n8n/chat/event-buses';
 import IconMic from 'virtual:icons/mdi/microphone';
+import { buildRequestMetadataFromElementId } from '@n8n/chat/utils';
 
 const chatStore = useChat();
 const { options } = useOptions();
@@ -92,7 +93,8 @@ async function sendAudio(audioBlob: Blob) {
 		form.append(options.chatSessionKey as string, chatStore.currentSessionId.value || '');
 		const filename = audioBlob.type === 'audio/wav' ? 'audio.wav' : 'audio.webm';
 		form.append('audio', audioBlob, filename);
-		if (options.metadata) form.append('metadata', JSON.stringify(options.metadata));
+		const mergedMeta = buildRequestMetadataFromElementId(options);
+		if (mergedMeta) form.append('metadata', JSON.stringify(mergedMeta));
 
 		const res1 = await fetch(options.webhookUrl, {
 			method: 'POST',
@@ -124,7 +126,9 @@ async function sendAudio(audioBlob: Blob) {
 				action: 'messageFromAudio',
 				[options.chatSessionKey as string]: chatStore.currentSessionId.value || '',
 				chatInput: userText,
-				...(options.metadata ? { metadata: options.metadata } : {}),
+				...(buildRequestMetadataFromElementId(options)
+					? { metadata: buildRequestMetadataFromElementId(options) }
+					: {}),
 			}),
 		});
 		if (!res2.ok) throw new Error(`Webhook (messageFromAudio) failed: ${res2.status}`);

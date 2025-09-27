@@ -1,7 +1,5 @@
-import { nextTick } from 'vue';
 import type { Ref } from 'vue';
 
-import { chatEventBus } from '@n8n/chat/event-buses';
 import type { ChatMessage, ChatMessageText } from '@n8n/chat/types';
 
 import type { StreamingMessageManager } from './streaming';
@@ -51,9 +49,7 @@ export function handleStreamingChunk(
 			}
 		}
 
-		void nextTick(() => {
-			chatEventBus.emit('scrollToBottom');
-		});
+		// Scrolling to bottom is handled by the caller on first chunk
 	} catch (error) {
 		console.error('Error handling stream chunk:', error);
 		// Continue gracefully without breaking the stream

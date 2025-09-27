@@ -13,11 +13,11 @@ export const defaultOptions: ChatOptions = {
 	chatSessionKey: 'sessionId',
 	defaultLanguage: 'en',
 	showWelcomeScreen: false,
-	initialMessages: ['Hi there! 👋', 'My name is Nathan. How can I assist you today?'],
+	initialMessages: ['Hola, ¿en qué te puedo ayudar?'],
 	i18n: {
 		en: {
-			title: 'Hi there! 👋',
-			subtitle: "Start a chat. We're here to help you 24/7.",
+			title: 'Turnex Copilot',
+			subtitle: 'Háblame para ayudarte con Turnex',
 			footer: '',
 			getStarted: 'New Conversation',
 			inputPlaceholder: 'Type your question..',
@@ -26,6 +26,7 @@ export const defaultOptions: ChatOptions = {
 	},
 	theme: {},
 	enableStreaming: false,
+	chatMode: 'text',
 };
 
 export const defaultMountingTarget = '#n8n-chat';

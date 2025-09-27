@@ -16,6 +16,7 @@ export interface ChatOptions {
 	defaultLanguage?: 'en';
 	initialMessages?: string[];
 	metadata?: Record<string, unknown>;
+	metadataElementId?: string;
 	i18n: Record<
 		string,
 		{
@@ -34,11 +35,5 @@ export interface ChatOptions {
 	allowFileUploads?: Ref<boolean> | boolean;
 	allowedFilesMimeTypes?: Ref<string> | string;
 	enableStreaming?: boolean;
-	/**
-	 * Control de modo de chat.
-	 * - 'text': solo texto, sin toggle
-	 * - 'voice': solo voz, sin toggle
-	 * - 'toggle': muestra un toggle moderno para alternar entre texto y voz
-	 */
 	chatMode?: 'text' | 'voice' | 'toggle';
 }

@@ -336,10 +336,10 @@ function adjustTextAreaHeight() {
 					data-test-id="chat-attach-file-button"
 					@click="onOpenFileDialog"
 				>
-					<IconPaperclip height="24" width="24" />
+					<IconPaperclip height="20" width="20" />
 				</button>
 				<button :disabled="isSubmitDisabled" class="chat-input-send-button" @click="onSubmit">
-					<IconSend height="24" width="24" />
+					<IconSend height="20" width="20" />
 				</button>
 			</div>
 		</div>
@@ -379,7 +379,7 @@ function adjustTextAreaHeight() {
 	justify-content: center;
 	align-items: center;
 	gap: 0.5rem;
-	background: var(--chat--body--background);
+	background: var(--chat--footer--background);
 
 	padding: 0.7rem 1rem;
 
@@ -403,6 +403,7 @@ function adjustTextAreaHeight() {
 		border-radius: 12px;
 
 		box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.04);
+		transition: border-color 0.2s ease;
 
 		&::placeholder {
 			font-size: var(--chat--input--placeholder--font-size, var(--chat--input--font-size));
@@ -420,8 +421,8 @@ function adjustTextAreaHeight() {
 }
 .chat-input-send-button,
 .chat-input-file-button {
-	height: 50px;
-	width: 50px;
+	height: 42px;
+	width: 42px;
 	background: var(--chat--input--send--button--background, white);
 	cursor: pointer;
 	color: var(--chat--input--send--button--color, var(--chat--color-secondary));

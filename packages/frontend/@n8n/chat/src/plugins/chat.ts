@@ -115,6 +115,8 @@ interface StreamingMessageConfig {
 	messages: Ref<ChatMessage[]>;
 	receivedMessage: Ref<ChatMessageText | null>;
 	streamingManager: StreamingMessageManager;
+	waitingForResponse: Ref<boolean>;
+	agentThinkingtext: Ref<string>;
 }
 
 /**
@@ -123,11 +125,51 @@ interface StreamingMessageConfig {
  * @param config - Configuration object for streaming message handling
  */
 async function handleStreamingMessage(config: StreamingMessageConfig): Promise<void> {
-	const { text, files, sessionId, options, messages, receivedMessage, streamingManager } = config;
+	const {
+		text,
+		files,
+		sessionId,
+		options,
+		messages,
+		receivedMessage,
+		streamingManager,
+		waitingForResponse,
+		agentThinkingtext,
+	} = config;
+
+	let hasHiddenLoader = false;
+	let hasScrolledOnFirstChunk = false;
 
 	const handlers: api.StreamingEventHandlers = {
 		onChunk: (chunk: string, nodeId?: string, runIndex?: number) => {
+			if (!hasHiddenLoader) {
+				waitingForResponse.value = false;
+				hasHiddenLoader = true;
+			}
+			if (!hasScrolledOnFirstChunk) {
+				void nextTick(() => {
+					chatEventBus.emit('scrollToBottom');
+				});
+				hasScrolledOnFirstChunk = true;
+			}
 			handleStreamingChunk(chunk, nodeId, streamingManager, receivedMessage, messages, runIndex);
+		},
+		onToolCallText: (chunk: string) => {
+			// Accumulate interim text to show under typing indicator
+			const previousText = agentThinkingtext.value;
+			agentThinkingtext.value = chunk;
+
+			// Emit scroll event when agentThinkingtext changes
+			if (previousText !== chunk && chunk) {
+				void nextTick(() => {
+					chatEventBus.emit('scrollToBottom');
+				});
+			}
+		},
+		onToolCallEnd: () => {
+			if (agentThinkingtext.value) {
+				agentThinkingtext.value = '';
+			}
 		},
 		onBeginMessage: (nodeId: string, runIndex?: number) => {
 			handleNodeStart(nodeId, streamingManager, runIndex);
@@ -187,6 +229,7 @@ export const ChatPlugin: Plugin<ChatOptions> = {
 		const messages = ref<ChatMessage[]>([]);
 		const currentSessionId = ref<string | null>(null);
 		const waitingForResponse = ref(false);
+		const agentThinkingtext = ref('');
 
 		const initialMessages = computed<ChatMessage[]>(() =>
 			(options.initialMessages ?? []).map((text) => ({
@@ -205,6 +248,7 @@ export const ChatPlugin: Plugin<ChatOptions> = {
 			messages.value.push(sentMessage);
 			waitingForResponse.value = true;
 
+			// Emit scroll when waiting for response starts (typing indicator appears)
 			void nextTick(() => {
 				chatEventBus.emit('scrollToBottom');
 			});
@@ -222,6 +266,8 @@ export const ChatPlugin: Plugin<ChatOptions> = {
 						messages,
 						receivedMessage,
 						streamingManager,
+						waitingForResponse,
+						agentThinkingtext,
 					});
 				} else {
 					const result = await handleNonStreamingMessage({
@@ -246,11 +292,6 @@ export const ChatPlugin: Plugin<ChatOptions> = {
 			} finally {
 				waitingForResponse.value = false;
 			}
-
-			void nextTick(() => {
-				chatEventBus.emit('scrollToBottom');
-			});
-
 			return null;
 		}
 
@@ -287,6 +328,7 @@ export const ChatPlugin: Plugin<ChatOptions> = {
 			messages,
 			currentSessionId,
 			waitingForResponse,
+			agentThinkingtext,
 			loadPreviousSession,
 			startNewSession,
 			sendMessage,

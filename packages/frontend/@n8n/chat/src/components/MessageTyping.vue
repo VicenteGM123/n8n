@@ -1,5 +1,7 @@
 <script lang="ts" setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch, nextTick } from 'vue';
+import { useChat } from '@n8n/chat/composables';
+import { chatEventBus } from '@n8n/chat/event-buses';
 
 import type { ChatMessage } from '@n8n/chat/types';
 
@@ -21,6 +23,16 @@ const message: ChatMessage = {
 	text: '',
 	sender: props.sender,
 };
+const { agentThinkingtext } = useChat();
+
+// Texto que se muestra para el bot
+const displayText = computed(() => {
+	if (props.sender === 'bot') {
+		return agentThinkingtext?.value || 'Procesando mensaje...';
+	}
+	return '';
+});
+
 const messageContainer = ref<InstanceType<typeof Message>>();
 const classes = computed(() => {
 	return {
@@ -32,8 +44,23 @@ const classes = computed(() => {
 });
 
 onMounted(() => {
-	messageContainer.value?.scrollToView();
+	nextTick(() => {
+		chatEventBus.emit('scrollToBottom');
+	});
 });
+
+// Watch for changes in agentThinkingtext and scroll when it changes
+watch(
+	() => agentThinkingtext?.value,
+	(newText, oldText) => {
+		if (newText !== oldText && newText && props.sender === 'bot') {
+			nextTick(() => {
+				chatEventBus.emit('scrollToBottom');
+			});
+		}
+	},
+	{ immediate: false },
+);
 </script>
 <template>
 	<Message
@@ -42,7 +69,13 @@ onMounted(() => {
 		:message="message"
 		:data-test-id="`chat-message-typing-${sender}`"
 	>
-		<div class="chat-message-typing-body">
+		<!-- Bot: texto con animación shimmer -->
+		<div v-if="sender === 'bot'" class="chat-message-typing-text">
+			<span class="shimmer-text">{{ displayText }}</span>
+		</div>
+
+		<!-- Usuario: mantener animación de puntos actual -->
+		<div v-else class="chat-message-typing-body">
 			<span class="chat-message-typing-circle"></span>
 			<span class="chat-message-typing-circle"></span>
 			<span class="chat-message-typing-circle"></span>
@@ -51,8 +84,31 @@ onMounted(() => {
 </template>
 <style lang="scss">
 .chat-message-typing {
-	max-width: 80px;
+	&.chat-message-typing-bot {
+		max-width: fit-content; // Más ancho para el texto del bot
+	}
 
+	&.chat-message-typing-user {
+		max-width: 80px; // Mantener tamaño pequeño para puntos
+	}
+
+	// Estilo para el texto del bot con animación shimmer
+	.chat-message-typing-text {
+		.shimmer-text {
+			font-family: 'Geist Mono', ui-monospace, 'Roboto Mono', Menlo, Monaco, 'Liberation Mono',
+				'DejaVu Sans Mono', 'Courier New', monospace;
+			font-weight: 400;
+			color: transparent;
+			background: linear-gradient(90deg, #777 42%, #000 46%, #000 49%, #777 53%);
+			background-size: 200% 100%;
+			background-clip: text;
+			-webkit-background-clip: text;
+			animation: shimmer 3.2s infinite linear;
+			position: relative;
+		}
+	}
+
+	// Animación de puntos para el usuario (mantener original)
 	&.chat-message-typing-animation-scaling .chat-message-typing-circle {
 		animation: chat-message-typing-animation-scaling 800ms ease-in-out infinite;
 		animation-delay: 3600ms;
@@ -100,6 +156,17 @@ onMounted(() => {
 	}
 }
 
+// Animación shimmer para el texto del bot
+@keyframes shimmer {
+	0% {
+		background-position: 200% 0;
+	}
+	100% {
+		background-position: -200% 0;
+	}
+}
+
+// Animaciones originales de los puntos (para usuario)
 @keyframes chat-message-typing-animation-scaling {
 	0% {
 		transform: scale(1);

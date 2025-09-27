@@ -46,9 +46,7 @@ const onUserTypingStop = () => {
 	userTyping.value = false;
 };
 
-const showToggle = computed(() => {
-	options.chatMode === 'toggle';
-});
+const showToggle = computed(() => options.chatMode === 'toggle');
 
 async function getStarted() {
 	if (!chatStore.startNewSession) {
@@ -95,7 +93,7 @@ onUnmounted(() => {
 	<Layout class="chat-wrapper">
 		<template #header>
 			<div class="chat-heading">
-				<div class="avatar" aria-hidden="true"></div>
+				<img class="avatar" src="/src/assets/image.avif" alt="Turnex" aria-hidden="true" />
 				<div class="meta">
 					<div class="title">
 						{{ t('title') }}
@@ -175,14 +173,14 @@ onUnmounted(() => {
 	flex-direction: row;
 	align-items: center;
 	gap: 0.75rem;
-	padding: 0.4rem 0.6rem;
+	padding: 0.2rem 0.6rem;
 }
 .chat-heading .avatar {
 	width: 36px;
 	height: 36px;
 	border-radius: 999px;
-	background: radial-gradient(circle at 30% 30%, #22d3ee, #6366f1 60%, #a78bfa);
-	box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.15);
+	object-fit: cover;
+	box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
 	flex: 0 0 auto;
 }
 .chat-heading .meta {
@@ -190,11 +188,12 @@ onUnmounted(() => {
 }
 .chat-heading .title {
 	font-weight: 700;
-	font-size: 0.98rem;
+	font-size: 0.95rem;
 }
 .chat-heading .status {
 	font-size: 0.8rem;
 	color: var(--muted);
+	margin-top: 2px;
 }
 .chat-heading .actions {
 	margin-left: auto;

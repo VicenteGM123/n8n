@@ -2,5 +2,8 @@
 @use 'css';
 
 .n8n-chat {
+	@include meta.load-css(
+		'https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&display=swap'
+	);
 	@include meta.load-css('highlight.js/styles/github');
 }

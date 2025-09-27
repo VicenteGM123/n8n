@@ -59,7 +59,8 @@ export const WorkflowChat: Story = {
 
 export const Custom: Story = {
 	args: {
-		webhookUrl: 'http://localhost:5678/webhook/54117de5-368d-4ca1-a851-0dce00bcd5fe/chat',
+		webhookUrl:
+			'https://aicowork.chilecentral.cloudapp.azure.com/webhook/06b6dd4f-057e-4ecf-b0da-383ae131fcbb/chat',
 		mode: 'window',
 		enableStreaming: false,
 	},
@@ -70,5 +71,18 @@ export const New: Story = {
 		webhookUrl: 'http://localhost:5678/webhook/54117de5-368d-4ca1-a851-0dce00bcd5fe/chat',
 		mode: 'window',
 		enableStreaming: false,
+	},
+};
+
+export const Local: Story = {
+	args: {
+		webhookUrl: 'http://localhost:8000/api/v1/chatbot/chat/stream',
+		mode: 'window',
+		enableStreaming: true,
+		webhookConfig: {
+			headers: {
+				'X-TURNEX-USER-ID': '6969',
+			},
+		},
 	},
 };

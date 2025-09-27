@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { N8nIcon, N8nText } from '@n8n/design-system';
-import { ref, watch } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 
 import Message from '@n8n/chat/components/Message.vue';
 import MessageTyping from '@n8n/chat/components/MessageTyping.vue';
@@ -19,6 +19,7 @@ defineSlots<{
 
 const chatStore = useChat();
 const messageComponents = ref<Array<InstanceType<typeof Message>>>([]);
+const typingComponents = ref<Array<InstanceType<typeof MessageTyping>>>([]);
 const { initialMessages, waitingForResponse } = chatStore;
 
 watch(
@@ -27,6 +28,31 @@ watch(
 		const lastMessageComponent = messageComponents.value[messageComponents.value.length - 1];
 		if (lastMessageComponent) {
 			lastMessageComponent.scrollToView();
+		}
+	},
+);
+
+// Watch for typing states and scroll when they appear
+watch(
+	() => props.userTyping,
+	(isTyping) => {
+		if (isTyping) {
+			nextTick(() => {
+				// The typing component will handle its own scroll via onMounted
+				// This is just a backup in case we need to force scroll
+			});
+		}
+	},
+);
+
+watch(
+	() => waitingForResponse.value,
+	(isWaiting) => {
+		if (isWaiting) {
+			nextTick(() => {
+				// The typing component will handle its own scroll via onMounted
+				// This is just a backup in case we need to force scroll
+			});
 		}
 	},
 );
@@ -60,10 +86,10 @@ watch(
 		</template>
 
 		<!-- User typing indicator -->
-		<MessageTyping v-if="props.userTyping" sender="user" />
+		<MessageTyping v-if="props.userTyping" ref="typingComponents" sender="user" />
 
 		<!-- Bot typing indicator -->
-		<MessageTyping v-if="waitingForResponse" sender="bot" />
+		<MessageTyping v-if="waitingForResponse" ref="typingComponents" sender="bot" />
 	</div>
 </template>
 
